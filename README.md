@@ -1,2 +1,2 @@
-# KVDB
-A Key-Value Database written in Rust from talent-plan
+# KvStore
+A Key-Value Store Engine written in Rust from talent-plan
