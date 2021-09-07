@@ -7,9 +7,8 @@ use std::sync::{ Mutex, Arc };
 
 use serde::{Serialize, Deserialize};
 use serde_json;
-
-
 use super::Result;
+use crate::error::SelfError;
 
 pub trait Disk {
     fn read(&self, offset: usize, buf: &mut [u8]);
@@ -47,7 +46,7 @@ pub struct KvStore {
 }
 
 impl KvStore {
-    /// Create a KvStore.
+    /// 新建一个KvStore
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
@@ -68,7 +67,7 @@ impl KvStore {
         }
     }
 
-    /// Get value by key.
+    /// 从内存中获取key以及对应的offset和len，从内存中获取对应的命令
     pub fn get(&self, key: String) -> Result<Option<String>> {
         match self.map.get(&key) {
             Some(memory_data) => {
@@ -80,7 +79,7 @@ impl KvStore {
 
                 let data: Command = serde_json::from_str(str::from_utf8(&buf).unwrap()).unwrap();
                 match data {
-                    Command::Set(_, value) => {
+                    Command::Set{ value, ..} => {
                         Ok(Some(value))
                     },
 
@@ -96,7 +95,6 @@ impl KvStore {
         }
     }
 
-    /// Set key-value
     pub fn set(&mut self, key: String, value: String) -> Result<()> {
         // match self.map.get(&key) {
           
@@ -104,18 +102,37 @@ impl KvStore {
         unimplemented!()
     }
 
-    /// Remove key
+
     pub fn remove(&mut self, key: String) -> Result<()>{
-        unimplemented!()
+        let offset = self.size;
+        let command = Command::Remove{ key: key.clone() };
+        let json;
+        match serde_json::to_string(&command) {
+            Ok(serde) => {
+                json = serde;
+            },
+            Err(err) => {
+                return Err(SelfError::SerdeErr(err))
+            }
+        }
+        let buf  = json.as_bytes();
+        // 从磁盘中移除key
+        self.map.remove(&key);
+        self.device.clone().write(offset, buf);
+        Ok(())
     }
 
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         unimplemented!()
     }
+
+    pub fn compact(&self) {
+        
+    }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Command {
-    Set(String, String),
-    Remove(String)
+    Set{ key: String, value: String },
+    Remove{ key: String }
 }
