@@ -3,9 +3,11 @@ use std::mem::size_of;
 use std::path::PathBuf;
 use std::fs::{ File, OpenOptions };
 use std::io::{ Seek, SeekFrom, Read, Write, Error };
-use std::str;
+use std::{str, usize};
 use std::sync::{ Mutex, Arc };
 use std::ptr;
+use std::u32;
+// use std::u64;
 
 use serde::{Serialize, Deserialize};
 use serde_json;
@@ -50,7 +52,7 @@ pub struct KvStore {
 
 impl KvStore {
     /// 新建一个KvStore
-    pub fn new() -> Self {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             map: HashMap::new(),
             device: Arc::new(
@@ -60,7 +62,7 @@ impl KvStore {
                             .read(true)
                             .write(true)
                             .create(true)
-                            .open("log.img")
+                            .open(path.into())
                             .unwrap();
                         f
                     })
@@ -168,8 +170,52 @@ impl KvStore {
         Ok(())
     }
 
+    /// 打开磁盘镜像，并扫描磁盘将日志数据装入磁盘
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
-        unimplemented!()
+        let header_offset = size_of::<usize>() + size_of::<u32>();
+        let mut kvstore = Self::new(path);
+        let device = kvstore.device.clone();
+        // 首先读出第一个日志
+        // 第一个偏移量应该是0
+        let mut offset_buf = [0u8; size_of::<usize>()];
+        device.read(0, &mut offset_buf);
+        let mut offset = usize::from_be_bytes(offset_buf);
+
+        // 获取第一个日志大小
+        let mut size_buf = [0u8; size_of::<u32>()];
+        device.read(size_of::<usize>(), &mut size_buf);
+        let mut memsize = u32::from_be_bytes(size_buf);
+
+        // 循环读取所有日志信息
+        loop {
+            let mut buf = vec![0u8; memsize as usize];
+            device.read(offset + header_offset, &mut buf);
+            match serde_json::from_slice(&buf) {
+                Ok(command) => {
+                    match command {
+                        Command::Set{ key, ..} => {
+                            let memdata = MemoryData {
+                                len: memsize as usize,
+                                offset
+                            };
+                            kvstore.map.insert(key, memdata);
+                        },
+
+                        Command::Remove{ key } => {
+                            kvstore.map.remove(&key);
+                        }
+                    }
+                },
+
+                Err(err) => {
+                    return Err(KvsError::SerdeErr(err))
+                }
+            }
+
+            // 更新 offset 和 memsize 的信息
+            offset = offset + header_offset + (memsize as usize);
+        }
+        Ok(kvstore)
     }
 
     pub fn compact(&self) {
