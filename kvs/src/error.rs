@@ -3,7 +3,7 @@ use std::io;
 use serde_json;
 
 #[derive(Fail, Debug)]
-pub enum SelfError {
+pub enum KvsError {
     #[fail(display = "{}", _0)]
     IOErr(#[cause] io::Error),
 
@@ -13,16 +13,16 @@ pub enum SelfError {
     SerdeErr(#[cause] serde_json::Error)
 }
 
-impl From<io::Error> for SelfError {
-    fn from(err: io::Error) -> SelfError {
-        SelfError::IOErr(err)
+impl From<io::Error> for KvsError {
+    fn from(err: io::Error) -> KvsError {
+        KvsError::IOErr(err)
     }
 }
 
-impl From<serde_json::Error> for SelfError {
-    fn from(err: serde_json::Error) -> SelfError {
-        SelfError::SerdeErr(err)
+impl From<serde_json::Error> for KvsError {
+    fn from(err: serde_json::Error) -> KvsError {
+        KvsError::SerdeErr(err)
     }
 }
 
-pub type Result<T> = std::result::Result<T, SelfError>;
+pub type Result<T> = std::result::Result<T, KvsError>;
