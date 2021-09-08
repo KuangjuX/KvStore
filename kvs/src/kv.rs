@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::mem::size_of;
+use std::mem::{self, size_of};
 use std::path::PathBuf;
 use std::fs::{ File, OpenOptions };
 use std::io::{ Seek, SeekFrom, Read, Write, Error };
@@ -214,6 +214,13 @@ impl KvStore {
 
             // 更新 offset 和 memsize 的信息
             offset = offset + header_offset + (memsize as usize);
+            device.read(offset + size_of::<usize>(), &mut size_buf);
+            memsize = u32::from_be_bytes(size_buf);
+
+            // 如果没有查到memsize，说明日志已经结束，跳出循环
+            if memsize == 0 {
+                break;
+            }
         }
         Ok(kvstore)
     }
